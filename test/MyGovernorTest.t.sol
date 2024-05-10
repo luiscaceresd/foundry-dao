@@ -2,7 +2,7 @@
 
 pragma solidity ^0.8.20;
 
-import { Test } from "forge-std/Test.sol";
+import { Test, console } from "forge-std/Test.sol";
 import { MyGovernor } from "../src/MyGovernor.sol";
 import { Box } from "../src/Box.sol";
 import { TimeLock } from "../src/TimeLock.sol";
@@ -17,7 +17,9 @@ contract MyGovernorTest is Test {
   address public USER = makeAddr("user");
   uint256 public constant INITIAL_SUPPLY = 100 ether;
 
-  uint256 public constant MIN_DELAY = 3600; // 1h - after vote passed
+  uint256 public constant MIN_DELAY = 1; // 1h - after vote passed
+  uint256 public constant VOTING_DELAY = 7200;
+  uint256 public constant VOTING_PERIOD = 50400;
   
   address[] proposers;
   address[] executors;
@@ -63,5 +65,37 @@ contract MyGovernorTest is Test {
 
     // 1. Propose to the DAO
     uint256 proposalId = governor.propose(targets, values, calldatas, description);
+
+    // view the state
+    console.log("Proposal state: ", uint256(governor.state(proposalId)));
+
+    vm.warp(block.timestamp  + VOTING_DELAY + 1);
+    vm.roll(block.number + VOTING_DELAY + 1);
+
+    console.log("Proposal state: ", uint256(governor.state(proposalId)));
+    vm.prank(USER);
+    // 2. Vote
+    string memory reason = "cuz blue frog is cool";
+    uint8 voteWay = 1; //voting yes
+
+    governor.castVoteWithReason(proposalId, voteWay, reason);
+
+    vm.warp(block.timestamp  + VOTING_PERIOD + 1);
+    vm.roll(block.number + VOTING_PERIOD + 1);
+
+    //  3. Queue TX
+    bytes32 descriptionHash = keccak256(abi.encodePacked(description));
+    governor.queue(targets, values, calldatas, descriptionHash);
+
+
+    vm.warp(block.timestamp  + MIN_DELAY + 1);
+    vm.roll(block.number + MIN_DELAY + 1);
+    
+    // 4. Execute TX
+
+    governor.execute(targets, values, calldatas, descriptionHash);
+
+    console.log("Box number: ", box.getNumber());
+    assert(box.getNumber() == valueToStore);
   }
 } 
